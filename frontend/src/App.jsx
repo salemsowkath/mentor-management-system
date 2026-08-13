@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
+const API = "http://localhost:5000";
+
 const emptyForm = {
   name: "",
   email: "",
@@ -24,82 +26,914 @@ const emptyForm = {
 };
 
 function App() {
-  const [students, setStudents] = useState([]);
-  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(
+    localStorage.getItem("mentor_token")
+  );
   const [loading, setLoading] = useState(true);
 
-  // Add/Edit form
-  const [showAddForm, setShowAddForm] = useState(false);
+  useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
-  // IMPORTANT: stores the student currently being edited
-  const [editingStudent, setEditingStudent] = useState(null);
+    fetch(`${API}/api/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Session expired");
+        }
 
-  const [formData, setFormData] = useState(emptyForm);
+        return response.json();
+      })
+      .then((data) => {
+        setUser(data.user);
+      })
+      .catch(() => {
+        localStorage.removeItem("mentor_token");
+        setToken(null);
+        setUser(null);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [token]);
 
-  // =========================
-  // GET STUDENTS
-  // =========================
-  const fetchStudents = async () => {
+  const handleLoginSuccess = (loginData) => {
+    localStorage.setItem("mentor_token", loginData.token);
+    setToken(loginData.token);
+    setUser(loginData.user);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("mentor_token");
+    setToken(null);
+    setUser(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="screen-center">
+        <div className="loading-box">
+          Checking login...
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Login
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
+
+  if (user.role === "HOD") {
+    return (
+      <HODDashboard
+        user={user}
+        token={token}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (user.role === "MENTOR") {
+    return (
+      <RoleDashboard
+        title="Mentor Dashboard"
+        subtitle="Mentor Management"
+        user={user}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (user.role === "STUDENT") {
+    return (
+      <RoleDashboard
+        title="Student Dashboard"
+        subtitle="Student Portal"
+        user={user}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  return (
+    <div className="screen-center">
+      <div className="loading-box">
+        Unknown user role.
+      </div>
+    </div>
+  );
+}
+
+
+// ======================================================
+// LOGIN
+// ======================================================
+
+function Login({ onLoginSuccess }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setError("");
+    setLoading(true);
+
     try {
       const response = await fetch(
-        "http://localhost:5000/api/students"
+        `${API}/api/auth/login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username,
+            password,
+          }),
+        }
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch students");
-      }
 
       const data = await response.json();
 
-      setStudents(data.students || []);
+      if (!response.ok) {
+        setError(
+          data.message || "Invalid username or password"
+        );
+        return;
+      }
+
+      onLoginSuccess(data);
     } catch (error) {
-      console.error("Fetch students error:", error);
+      console.error("Login error:", error);
+      setError("Cannot connect to server");
     } finally {
       setLoading(false);
     }
   };
 
+  return (
+    <div className="login-page">
+
+      <div className="login-card">
+
+        <div className="login-logo">
+          MMS
+        </div>
+
+        <h1>
+          Mentor Management System
+        </h1>
+
+        <p className="login-subtitle">
+          Secure Role-Based Login
+        </p>
+
+        <form onSubmit={handleSubmit}>
+
+          <div className="login-field">
+            <label>Username</label>
+
+            <input
+              type="text"
+              placeholder="Enter username"
+              value={username}
+              onChange={(e) =>
+                setUsername(e.target.value)
+              }
+              required
+            />
+          </div>
+
+          <div className="login-field">
+            <label>Password</label>
+
+            <input
+              type="password"
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="login-error">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="login-button"
+            disabled={loading}
+          >
+            {loading
+              ? "Signing in..."
+              : "Sign In"}
+          </button>
+
+        </form>
+
+        <div className="login-info">
+          <p>Development HOD Account</p>
+          <span>
+            Username: <strong>hod</strong>
+          </span>
+          <span>
+            Password: <strong>hod123</strong>
+          </span>
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+// ======================================================
+// HOD DASHBOARD
+// ======================================================
+
+function HODDashboard({
+  user,
+  token,
+  onLogout,
+}) {
+  const [activeModule, setActiveModule] =
+    useState("dashboard");
+
+  return (
+    <div className="dashboard-layout">
+
+      {/* SIDEBAR */}
+      <aside className="sidebar">
+
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-icon">
+            MMS
+          </div>
+
+          <div>
+            <h2>Mentor System</h2>
+            <span>HOD Portal</span>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
+
+          <button
+            className={
+              activeModule === "dashboard"
+                ? "nav-item active"
+                : "nav-item"
+            }
+            onClick={() =>
+              setActiveModule("dashboard")
+            }
+          >
+            <span>⌂</span>
+            Dashboard
+          </button>
+
+          <button
+            className={
+              activeModule === "mentors"
+                ? "nav-item active"
+                : "nav-item"
+            }
+            onClick={() =>
+              setActiveModule("mentors")
+            }
+          >
+            <span>👨‍🏫</span>
+            Manage Mentors
+          </button>
+
+          <button
+            className={
+              activeModule === "students"
+                ? "nav-item active"
+                : "nav-item"
+            }
+            onClick={() =>
+              setActiveModule("students")
+            }
+          >
+            <span>🎓</span>
+            Student Management
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() =>
+              alert("Manage Subjects module coming next")
+            }
+          >
+            <span>📚</span>
+            Manage Subjects
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() =>
+              alert("Groups module coming next")
+            }
+          >
+            <span>👥</span>
+            Student Groups
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() =>
+              alert("Approvals module coming next")
+            }
+          >
+            <span>✓</span>
+            Approvals
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() =>
+              alert("Reports module coming next")
+            }
+          >
+            <span>📊</span>
+            Department Reports
+          </button>
+
+          <button
+            className="nav-item"
+            onClick={() =>
+              alert("Master Data module coming next")
+            }
+          >
+            <span>⚙</span>
+            Master Data
+          </button>
+
+        </nav>
+
+        <div className="sidebar-bottom">
+
+          <div className="sidebar-user">
+            <div className="user-avatar">
+              {user.fullName
+                ?.charAt(0)
+                ?.toUpperCase()}
+            </div>
+
+            <div>
+              <strong>
+                {user.fullName}
+              </strong>
+
+              <span>HOD</span>
+            </div>
+          </div>
+
+          <button
+            className="logout-button"
+            onClick={onLogout}
+          >
+            Logout
+          </button>
+
+        </div>
+
+      </aside>
+
+
+      {/* MAIN CONTENT */}
+      <main className="dashboard-main">
+
+        <header className="dashboard-header">
+
+          <div>
+            <h1>
+              {activeModule === "dashboard"
+                ? "HOD Dashboard"
+                : activeModule === "mentors"
+                ? "Manage Mentors"
+                : "Student Management"}
+            </h1>
+
+            <p>
+              Welcome back, {user.fullName}
+            </p>
+          </div>
+
+          <div className="header-role">
+            HOD
+          </div>
+
+        </header>
+
+
+        {activeModule === "dashboard" && (
+          <HODHome
+            token={token}
+          />
+        )}
+
+        {activeModule === "mentors" && (
+          <MentorManagement
+            token={token}
+          />
+        )}
+
+        {activeModule === "students" && (
+          <StudentManagement
+            token={token}
+          />
+        )}
+
+      </main>
+
+    </div>
+  );
+}
+
+
+// ======================================================
+// HOD HOME
+// ======================================================
+
+function HODHome({ token }) {
+  const [studentCount, setStudentCount] =
+    useState(0);
+
+  const [mentorCount, setMentorCount] =
+    useState(0);
+
   useEffect(() => {
+
+    const loadCounts = async () => {
+      try {
+
+        const studentResponse =
+          await fetch(
+            `${API}/api/students`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          );
+
+        if (studentResponse.ok) {
+          const studentData =
+            await studentResponse.json();
+
+          setStudentCount(
+            studentData.students?.length || 0
+          );
+        }
+
+        const mentorResponse =
+          await fetch(
+            `${API}/api/mentors`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+            }
+          );
+
+        if (mentorResponse.ok) {
+          const mentorData =
+            await mentorResponse.json();
+
+          setMentorCount(
+            mentorData.mentors?.length || 0
+          );
+        }
+
+      } catch (error) {
+        console.error(
+          "Dashboard count error:",
+          error
+        );
+      }
+    };
+
+    loadCounts();
+
+  }, [token]);
+
+  return (
+    <div className="dashboard-content">
+
+      <div className="welcome-card">
+
+        <div>
+          <h2>
+            Welcome to HOD Dashboard
+          </h2>
+
+          <p>
+            Manage your department,
+            mentors and students from
+            one place.
+          </p>
+        </div>
+
+        <div className="welcome-icon">
+          🏫
+        </div>
+
+      </div>
+
+
+      <div className="stats-grid">
+
+        <StatCard
+          title="Total Students"
+          value={studentCount}
+          icon="🎓"
+        />
+
+        <StatCard
+          title="Total Mentors"
+          value={mentorCount}
+          icon="👨‍🏫"
+        />
+
+        <StatCard
+          title="Pending Approvals"
+          value="0"
+          icon="✓"
+        />
+
+        <StatCard
+          title="Department Reports"
+          value="0"
+          icon="📊"
+        />
+
+      </div>
+
+
+      <div className="dashboard-section">
+
+        <h2>
+          HOD Responsibilities
+        </h2>
+
+        <div className="responsibility-grid">
+
+          <div className="responsibility-card">
+            <span>👨‍🏫</span>
+            <h3>Manage Mentors</h3>
+            <p>
+              Register and manage
+              department mentors.
+            </p>
+          </div>
+
+          <div className="responsibility-card">
+            <span>🎓</span>
+            <h3>Student Management</h3>
+            <p>
+              Manage student information
+              and profiles.
+            </p>
+          </div>
+
+          <div className="responsibility-card">
+            <span>👥</span>
+            <h3>Groups</h3>
+            <p>
+              Organize students and
+              assign mentors.
+            </p>
+          </div>
+
+          <div className="responsibility-card">
+            <span>📊</span>
+            <h3>Reports</h3>
+            <p>
+              Monitor department
+              performance.
+            </p>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+// ======================================================
+// STAT CARD
+// ======================================================
+
+function StatCard({
+  title,
+  value,
+  icon,
+}) {
+  return (
+    <div className="stat-card">
+
+      <div className="stat-icon">
+        {icon}
+      </div>
+
+      <div>
+        <span>
+          {title}
+        </span>
+
+        <strong>
+          {value}
+        </strong>
+      </div>
+
+    </div>
+  );
+}
+
+
+// ======================================================
+// ROLE PLACEHOLDER
+// ======================================================
+
+function RoleDashboard({
+  title,
+  subtitle,
+  user,
+  onLogout,
+}) {
+  return (
+    <div className="dashboard-layout">
+
+      <aside className="sidebar">
+
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-icon">
+            MMS
+          </div>
+
+          <div>
+            <h2>Mentor System</h2>
+            <span>
+              {subtitle}
+            </span>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
+
+          <button className="nav-item active">
+            <span>⌂</span>
+            Dashboard
+          </button>
+
+        </nav>
+
+        <div className="sidebar-bottom">
+
+          <div className="sidebar-user">
+
+            <div className="user-avatar">
+              {user.fullName
+                ?.charAt(0)
+                ?.toUpperCase()}
+            </div>
+
+            <div>
+              <strong>
+                {user.fullName}
+              </strong>
+
+              <span>
+                {user.role}
+              </span>
+            </div>
+
+          </div>
+
+          <button
+            className="logout-button"
+            onClick={onLogout}
+          >
+            Logout
+          </button>
+
+        </div>
+
+      </aside>
+
+      <main className="dashboard-main">
+
+        <header className="dashboard-header">
+
+          <div>
+            <h1>{title}</h1>
+
+            <p>
+              Welcome, {user.fullName}
+            </p>
+          </div>
+
+          <div className="header-role">
+            {user.role}
+          </div>
+
+        </header>
+
+        <div className="dashboard-content">
+
+          <div className="coming-card">
+
+            <div className="coming-icon">
+              🚧
+            </div>
+
+            <h2>
+              {title}
+            </h2>
+
+            <p>
+              This dashboard will be
+              developed in the next phase.
+            </p>
+
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+  );
+}
+
+
+// ======================================================
+// STUDENT MANAGEMENT
+// ======================================================
+
+function StudentManagement({ token }) {
+
+  const [students, setStudents] =
+    useState([]);
+
+  const [selectedStudent, setSelectedStudent] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [showAddForm, setShowAddForm] =
+    useState(false);
+
+  const [editingStudent, setEditingStudent] =
+    useState(null);
+
+  const [formData, setFormData] =
+    useState(emptyForm);
+
+
+  const authHeaders = {
+    Authorization: `Bearer ${token}`,
+  };
+
+
+  const fetchStudents = async () => {
+
+    try {
+
+      const response = await fetch(
+        `${API}/api/students`,
+        {
+          headers: authHeaders,
+        }
+      );
+
+      if (response.status === 401 ||
+          response.status === 403) {
+        throw new Error(
+          "You are not authorized"
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          "Failed to fetch students"
+        );
+      }
+
+      const data =
+        await response.json();
+
+      setStudents(
+        data.students || []
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Fetch students error:",
+        error
+      );
+
+    } finally {
+
+      setLoading(false);
+
+    }
+  };
+
+
+  useEffect(() => {
+
     fetchStudents();
+
   }, []);
 
-  // =========================
-  // FORM INPUT
-  // =========================
+
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+
+    const {
+      name,
+      value,
+      type,
+      checked,
+    } = e.target;
 
     setFormData((previous) => ({
       ...previous,
-      [name]: type === "checkbox" ? checked : value,
+      [name]:
+        type === "checkbox"
+          ? checked
+          : value,
     }));
   };
 
-  // =========================
-  // ADD / UPDATE STUDENT
-  // =========================
+
   const handleSubmit = async (e) => {
+
     e.preventDefault();
 
     try {
+
       const url = editingStudent
-        ? `http://localhost:5000/api/students/${editingStudent.student_id}`
-        : "http://localhost:5000/api/students";
+        ? `${API}/api/students/${editingStudent.student_id}`
+        : `${API}/api/students`;
 
-      const method = editingStudent ? "PUT" : "POST";
+      const method =
+        editingStudent
+          ? "PUT"
+          : "POST";
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
+      const response = await fetch(
+        url,
+        {
+          method,
+          headers: {
+            ...authHeaders,
+            "Content-Type":
+              "application/json",
+          },
+          body:
+            JSON.stringify(formData),
+        }
+      );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
-        alert(data.message || "Operation failed");
+
+        alert(
+          data.message ||
+          "Operation failed"
+        );
+
         return;
       }
 
@@ -109,67 +943,94 @@ function App() {
           : "Student added successfully!"
       );
 
-      // Close form
       setShowAddForm(false);
-
-      // Exit edit mode
       setEditingStudent(null);
-
-      // Clear form
       setFormData({ ...emptyForm });
 
-      // Reload students
       await fetchStudents();
+
     } catch (error) {
-      console.error("Student save error:", error);
-      alert("Server connection failed");
+
+      console.error(
+        "Student save error:",
+        error
+      );
+
+      alert(
+        "Server connection failed"
+      );
     }
   };
 
-  // =========================
-  // OPEN ADD FORM
-  // =========================
+
   const handleAddStudent = () => {
+
     setEditingStudent(null);
     setFormData({ ...emptyForm });
     setShowAddForm(true);
   };
 
-  // =========================
-  // OPEN EDIT FORM
-  // =========================
-  const handleEditStudent = (student) => {
+
+  const handleEditStudent = (
+    student
+  ) => {
+
     setEditingStudent(student);
 
     setFormData({
-      name: student.name || "",
-      email: student.email || "",
-      gender: student.gender || "",
-      mobile: student.mobile || "",
-      alternate_email: student.alternate_email || "",
 
-      dob: student.dob
-        ? String(student.dob).substring(0, 10)
-        : "",
+      name:
+        student.name || "",
 
-      mother_tongue: student.mother_tongue || "",
-      nativity_state: student.nativity_state || "",
+      email:
+        student.email || "",
+
+      gender:
+        student.gender || "",
+
+      mobile:
+        student.mobile || "",
+
+      alternate_email:
+        student.alternate_email || "",
+
+      dob:
+        student.dob
+          ? String(student.dob)
+              .substring(0, 10)
+          : "",
+
+      mother_tongue:
+        student.mother_tongue || "",
+
+      nativity_state:
+        student.nativity_state || "",
 
       sslc_percentage:
         student.sslc_percentage ?? "",
 
-      sslc_gap: Boolean(student.sslc_gap),
+      sslc_gap:
+        Boolean(student.sslc_gap),
 
       hsc_diploma_percentage:
         student.hsc_diploma_percentage ?? "",
 
       hsc_diploma_gap:
-        Boolean(student.hsc_diploma_gap),
+        Boolean(
+          student.hsc_diploma_gap
+        ),
 
-      ug_degree: student.ug_degree || "",
-      ug_department: student.ug_department || "",
-      ug_institute: student.ug_institute || "",
-      ug_university: student.ug_university || "",
+      ug_degree:
+        student.ug_degree || "",
+
+      ug_department:
+        student.ug_department || "",
+
+      ug_institute:
+        student.ug_institute || "",
+
+      ug_university:
+        student.ug_university || "",
 
       ug_year_of_passing:
         student.ug_year_of_passing ?? "",
@@ -179,471 +1040,591 @@ function App() {
 
       ug_active_backlog:
         student.ug_active_backlog ?? 0,
+
     });
 
     setShowAddForm(true);
   };
 
-  // =========================
-  // CANCEL FORM
-  // =========================
+
   const handleCancel = () => {
+
     setShowAddForm(false);
     setEditingStudent(null);
     setFormData({ ...emptyForm });
+
   };
 
-  // =========================
-  // LOADING
-  // =========================
+
+  const handleDeleteStudent = async (
+    student
+  ) => {
+
+    const confirmDelete =
+      window.confirm(
+        `Are you sure you want to delete ${student.name}?`
+      );
+
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+
+      const response = await fetch(
+        `${API}/api/students/${student.student_id}`,
+        {
+          method: "DELETE",
+          headers: authHeaders,
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+
+        alert(
+          data.message ||
+          "Failed to delete student"
+        );
+
+        return;
+      }
+
+      alert(
+        "Student deleted successfully!"
+      );
+
+      await fetchStudents();
+
+    } catch (error) {
+
+      console.error(
+        "Delete student error:",
+        error
+      );
+
+      alert(
+        "Server connection failed"
+      );
+    }
+  };
+
+
   if (loading) {
+
     return (
-      <div className="message">
+      <div className="loading-module">
         Loading students...
       </div>
     );
   }
 
-  // =========================
-  // MAIN UI
-  // =========================
+
+  if (selectedStudent) {
+
+    return (
+      <StudentProfile
+        student={selectedStudent}
+        onBack={() =>
+          setSelectedStudent(null)
+        }
+      />
+    );
+  }
+
+
   return (
-    <div className="app">
+    <div className="module-content">
 
-      <header className="header">
-        <h1>Mentor Management System</h1>
-        <p>Student Management</p>
-      </header>
+      <div className="module-toolbar">
 
-      <main className="container">
+        <div>
+          <h2>
+            Student Management
+          </h2>
 
-        {!selectedStudent ? (
-          <>
-            {/* =========================
-                TITLE
-            ========================= */}
-            <div className="title-section">
+          <p>
+            {students.length} students
+            registered
+          </p>
+        </div>
 
-              <div>
-                <h2>Students</h2>
-                <span>
-                  {students.length} Students
-                </span>
-              </div>
+        <button
+          className="add-button"
+          onClick={handleAddStudent}
+        >
+          + Add Student
+        </button>
 
-              <button
-                className="add-button"
-                onClick={handleAddStudent}
+      </div>
+
+
+      {showAddForm && (
+
+        <form
+          className="student-form"
+          onSubmit={handleSubmit}
+        >
+
+          <h2>
+            {editingStudent
+              ? "Edit Student"
+              : "Add New Student"}
+          </h2>
+
+          <div className="form-grid">
+
+            <div className="form-group">
+              <label>Name *</label>
+
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>Email</label>
+
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>Gender</label>
+
+              <select
+                name="gender"
+                value={formData.gender}
+                onChange={handleChange}
               >
-                + Add Student
-              </button>
+                <option value="">
+                  Select Gender
+                </option>
+
+                <option value="Male">
+                  Male
+                </option>
+
+                <option value="Female">
+                  Female
+                </option>
+              </select>
+            </div>
+
+
+            <div className="form-group">
+              <label>Mobile</label>
+
+              <input
+                type="text"
+                name="mobile"
+                value={formData.mobile}
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Alternate Email
+              </label>
+
+              <input
+                type="email"
+                name="alternate_email"
+                value={
+                  formData.alternate_email
+                }
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Date of Birth
+              </label>
+
+              <input
+                type="date"
+                name="dob"
+                value={formData.dob}
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Mother Tongue
+              </label>
+
+              <input
+                type="text"
+                name="mother_tongue"
+                value={
+                  formData.mother_tongue
+                }
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Nativity State
+              </label>
+
+              <input
+                type="text"
+                name="nativity_state"
+                value={
+                  formData.nativity_state
+                }
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                SSLC Percentage
+              </label>
+
+              <input
+                type="number"
+                step="0.01"
+                name="sslc_percentage"
+                value={
+                  formData.sslc_percentage
+                }
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group checkbox-group">
+
+              <label>
+                <input
+                  type="checkbox"
+                  name="sslc_gap"
+                  checked={
+                    formData.sslc_gap
+                  }
+                  onChange={handleChange}
+                />
+                SSLC Gap
+              </label>
 
             </div>
 
-            {/* =========================
-                ADD / EDIT FORM
-            ========================= */}
-            {showAddForm && (
-              <form
-                className="student-form"
-                onSubmit={handleSubmit}
-              >
 
-                <h2>
-                  {editingStudent
-                    ? "Edit Student"
-                    : "Add New Student"}
-                </h2>
+            <div className="form-group">
+              <label>
+                HSC / Diploma Percentage
+              </label>
 
-                <div className="form-grid">
+              <input
+                type="number"
+                step="0.01"
+                name="hsc_diploma_percentage"
+                value={
+                  formData.hsc_diploma_percentage
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                  {/* NAME */}
-                  <div className="form-group">
-                    <label>Name *</label>
 
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
+            <div className="form-group checkbox-group">
 
-                  {/* EMAIL */}
-                  <div className="form-group">
-                    <label>Email</label>
+              <label>
+                <input
+                  type="checkbox"
+                  name="hsc_diploma_gap"
+                  checked={
+                    formData.hsc_diploma_gap
+                  }
+                  onChange={handleChange}
+                />
+                HSC / Diploma Gap
+              </label>
 
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                    />
-                  </div>
+            </div>
 
-                  {/* GENDER */}
-                  <div className="form-group">
-                    <label>Gender</label>
 
-                    <select
-                      name="gender"
-                      value={formData.gender}
-                      onChange={handleChange}
-                    >
-                      <option value="">
-                        Select Gender
-                      </option>
+            <div className="form-group">
+              <label>
+                UG Degree
+              </label>
 
-                      <option value="Male">
-                        Male
-                      </option>
+              <input
+                type="text"
+                name="ug_degree"
+                value={
+                  formData.ug_degree
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                      <option value="Female">
-                        Female
-                      </option>
-                    </select>
-                  </div>
 
-                  {/* MOBILE */}
-                  <div className="form-group">
-                    <label>Mobile</label>
+            <div className="form-group">
+              <label>
+                UG Department
+              </label>
 
-                    <input
-                      type="text"
-                      name="mobile"
-                      value={formData.mobile}
-                      onChange={handleChange}
-                    />
-                  </div>
+              <input
+                type="text"
+                name="ug_department"
+                value={
+                  formData.ug_department
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                  {/* ALTERNATE EMAIL */}
-                  <div className="form-group">
-                    <label>Alternate Email</label>
 
-                    <input
-                      type="email"
-                      name="alternate_email"
-                      value={formData.alternate_email}
-                      onChange={handleChange}
-                    />
-                  </div>
+            <div className="form-group">
+              <label>
+                UG Institute
+              </label>
 
-                  {/* DOB */}
-                  <div className="form-group">
-                    <label>Date of Birth</label>
+              <input
+                type="text"
+                name="ug_institute"
+                value={
+                  formData.ug_institute
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                    <input
-                      type="date"
-                      name="dob"
-                      value={formData.dob}
-                      onChange={handleChange}
-                    />
-                  </div>
 
-                  {/* MOTHER TONGUE */}
-                  <div className="form-group">
-                    <label>Mother Tongue</label>
+            <div className="form-group">
+              <label>
+                UG University
+              </label>
 
-                    <input
-                      type="text"
-                      name="mother_tongue"
-                      value={formData.mother_tongue}
-                      onChange={handleChange}
-                    />
-                  </div>
+              <input
+                type="text"
+                name="ug_university"
+                value={
+                  formData.ug_university
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                  {/* NATIVITY */}
-                  <div className="form-group">
-                    <label>Nativity State</label>
 
-                    <input
-                      type="text"
-                      name="nativity_state"
-                      value={formData.nativity_state}
-                      onChange={handleChange}
-                    />
-                  </div>
+            <div className="form-group">
+              <label>
+                UG Year of Passing
+              </label>
 
-                  {/* SSLC */}
-                  <div className="form-group">
-                    <label>SSLC Percentage</label>
+              <input
+                type="number"
+                name="ug_year_of_passing"
+                value={
+                  formData.ug_year_of_passing
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="sslc_percentage"
-                      value={formData.sslc_percentage}
-                      onChange={handleChange}
-                    />
-                  </div>
 
-                  {/* SSLC GAP */}
-                  <div className="form-group checkbox-group">
+            <div className="form-group">
+              <label>
+                UG Percentage
+              </label>
 
-                    <label>
-                      <input
-                        type="checkbox"
-                        name="sslc_gap"
-                        checked={formData.sslc_gap}
-                        onChange={handleChange}
-                      />
+              <input
+                type="number"
+                step="0.01"
+                name="ug_percentage"
+                value={
+                  formData.ug_percentage
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                      Gap after SSLC
-                    </label>
 
-                  </div>
+            <div className="form-group">
+              <label>
+                Active Backlog
+              </label>
 
-                  {/* HSC */}
-                  <div className="form-group">
-                    <label>
-                      HSC / Diploma Percentage
-                    </label>
+              <input
+                type="number"
+                min="0"
+                name="ug_active_backlog"
+                value={
+                  formData.ug_active_backlog
+                }
+                onChange={handleChange}
+              />
+            </div>
 
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="hsc_diploma_percentage"
-                      value={
-                        formData.hsc_diploma_percentage
-                      }
-                      onChange={handleChange}
-                    />
-                  </div>
+          </div>
 
-                  {/* HSC GAP */}
-                  <div className="form-group checkbox-group">
 
-                    <label>
-                      <input
-                        type="checkbox"
-                        name="hsc_diploma_gap"
-                        checked={formData.hsc_diploma_gap}
-                        onChange={handleChange}
-                      />
+          <div className="form-actions">
 
-                      Gap after HSC / Diploma
-                    </label>
+            <button
+              type="submit"
+              className="save-button"
+            >
+              {editingStudent
+                ? "Update Student"
+                : "Save Student"}
+            </button>
 
-                  </div>
+            <button
+              type="button"
+              className="cancel-button"
+              onClick={handleCancel}
+            >
+              Cancel
+            </button>
 
-                  {/* UG DEGREE */}
-                  <div className="form-group">
-                    <label>UG Degree</label>
+          </div>
 
-                    <input
-                      type="text"
-                      name="ug_degree"
-                      value={formData.ug_degree}
-                      onChange={handleChange}
-                    />
-                  </div>
+        </form>
+      )}
 
-                  {/* UG DEPARTMENT */}
-                  <div className="form-group">
-                    <label>UG Department</label>
 
-                    <input
-                      type="text"
-                      name="ug_department"
-                      value={formData.ug_department}
-                      onChange={handleChange}
-                    />
-                  </div>
+      <div className="table-container">
 
-                  {/* UG INSTITUTE */}
-                  <div className="form-group">
-                    <label>UG Institute</label>
+        <table>
 
-                    <input
-                      type="text"
-                      name="ug_institute"
-                      value={formData.ug_institute}
-                      onChange={handleChange}
-                    />
-                  </div>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Gender</th>
+              <th>Mobile</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
 
-                  {/* UG UNIVERSITY */}
-                  <div className="form-group">
-                    <label>UG University</label>
+          <tbody>
 
-                    <input
-                      type="text"
-                      name="ug_university"
-                      value={formData.ug_university}
-                      onChange={handleChange}
-                    />
-                  </div>
+            {students.length === 0 ? (
 
-                  {/* UG YEAR */}
-                  <div className="form-group">
-                    <label>
-                      UG Year of Passing
-                    </label>
+              <tr>
+                <td
+                  colSpan="6"
+                  className="empty-table"
+                >
+                  No students found
+                </td>
+              </tr>
 
-                    <input
-                      type="number"
-                      name="ug_year_of_passing"
-                      value={
-                        formData.ug_year_of_passing
-                      }
-                      onChange={handleChange}
-                    />
-                  </div>
+            ) : (
 
-                  {/* UG PERCENTAGE */}
-                  <div className="form-group">
-                    <label>UG Percentage</label>
+              students.map((student) => (
 
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="ug_percentage"
-                      value={formData.ug_percentage}
-                      onChange={handleChange}
-                    />
-                  </div>
+                <tr
+                  key={
+                    student.student_id
+                  }
+                >
 
-                  {/* ACTIVE BACKLOG */}
-                  <div className="form-group">
-                    <label>Active Backlog</label>
+                  <td>
+                    {student.student_id}
+                  </td>
 
-                    <input
-                      type="number"
-                      min="0"
-                      name="ug_active_backlog"
-                      value={
-                        formData.ug_active_backlog
-                      }
-                      onChange={handleChange}
-                    />
-                  </div>
+                  <td>
+                    {student.name}
+                  </td>
 
-                </div>
+                  <td>
+                    {student.email ||
+                      "—"}
+                  </td>
 
-                {/* FORM BUTTONS */}
-                <div className="form-actions">
+                  <td>
+                    {student.gender ||
+                      "—"}
+                  </td>
 
-                  <button
-                    type="submit"
-                    className="save-button"
-                  >
-                    {editingStudent
-                      ? "Update Student"
-                      : "Save Student"}
-                  </button>
+                  <td>
+                    {student.mobile ||
+                      "—"}
+                  </td>
 
-                  <button
-                    type="button"
-                    className="cancel-button"
-                    onClick={handleCancel}
-                  >
-                    Cancel
-                  </button>
+                  <td>
 
-                </div>
+                    <div className="action-buttons">
 
-              </form>
+                      <button
+                        className="view-button"
+                        onClick={() =>
+                          setSelectedStudent(
+                            student
+                          )
+                        }
+                      >
+                        View
+                      </button>
+
+                      <button
+                        className="edit-button"
+                        onClick={() =>
+                          handleEditStudent(
+                            student
+                          )
+                        }
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        className="delete-button"
+                        onClick={() =>
+                          handleDeleteStudent(
+                            student
+                          )
+                        }
+                      >
+                        Delete
+                      </button>
+
+                    </div>
+
+                  </td>
+
+                </tr>
+
+              ))
+
             )}
 
-            {/* =========================
-                STUDENT TABLE
-            ========================= */}
-            <div className="table-container">
+          </tbody>
 
-              <table>
+        </table>
 
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Gender</th>
-                    <th>Mobile</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-
-                  {students.map((student) => (
-
-                    <tr key={student.student_id}>
-
-                      <td>
-                        {student.student_id}
-                      </td>
-
-                      <td>
-                        {student.name}
-                      </td>
-
-                      <td>
-                        {student.email}
-                      </td>
-
-                      <td>
-                        {student.gender}
-                      </td>
-
-                      <td>
-                        {student.mobile}
-                      </td>
-
-                      <td>
-
-                        <div className="action-buttons">
-
-                          {/* VIEW */}
-                          <button
-                            className="view-button"
-                            onClick={() =>
-                              setSelectedStudent(student)
-                            }
-                          >
-                            View Profile
-                          </button>
-
-                          {/* EDIT */}
-                          <button
-                            className="edit-button"
-                            onClick={() =>
-                              handleEditStudent(student)
-                            }
-                          >
-                            Edit
-                          </button>
-
-                        </div>
-
-                      </td>
-
-                    </tr>
-
-                  ))}
-
-                </tbody>
-
-              </table>
-
-            </div>
-          </>
-        ) : (
-
-          <StudentProfile
-            student={selectedStudent}
-            onBack={() =>
-              setSelectedStudent(null)
-            }
-          />
-
-        )}
-
-      </main>
+      </div>
 
     </div>
   );
 }
+
 
 // ======================================================
 // STUDENT PROFILE
@@ -666,24 +1647,24 @@ function StudentProfile({
       <div className="profile-header">
 
         <div className="avatar">
-          {student.name.charAt(0)}
+          {student.name
+            ?.charAt(0)}
         </div>
 
         <div>
-
           <h2>
             {student.name}
           </h2>
 
           <p>
-            Student ID: {student.student_id}
+            Student ID:{" "}
+            {student.student_id}
           </p>
-
         </div>
 
       </div>
 
-      {/* PERSONAL */}
+
       <section className="profile-section">
 
         <h3>
@@ -699,7 +1680,9 @@ function StudentProfile({
 
           <Detail
             label="Alternate Email"
-            value={student.alternate_email}
+            value={
+              student.alternate_email
+            }
           />
 
           <Detail
@@ -719,19 +1702,23 @@ function StudentProfile({
 
           <Detail
             label="Mother Tongue"
-            value={student.mother_tongue}
+            value={
+              student.mother_tongue
+            }
           />
 
           <Detail
             label="Nativity"
-            value={student.nativity_state}
+            value={
+              student.nativity_state
+            }
           />
 
         </div>
 
       </section>
 
-      {/* ACADEMIC */}
+
       <section className="profile-section">
 
         <h3>
@@ -743,7 +1730,8 @@ function StudentProfile({
           <Detail
             label="SSLC Percentage"
             value={
-              student.sslc_percentage !== null
+              student.sslc_percentage !==
+              null
                 ? `${student.sslc_percentage}%`
                 : null
             }
@@ -761,7 +1749,8 @@ function StudentProfile({
           <Detail
             label="HSC / Diploma Percentage"
             value={
-              student.hsc_diploma_percentage !== null
+              student.hsc_diploma_percentage !==
+              null
                 ? `${student.hsc_diploma_percentage}%`
                 : null
             }
@@ -778,33 +1767,44 @@ function StudentProfile({
 
           <Detail
             label="UG Degree"
-            value={student.ug_degree}
+            value={
+              student.ug_degree
+            }
           />
 
           <Detail
             label="UG Department"
-            value={student.ug_department}
+            value={
+              student.ug_department
+            }
           />
 
           <Detail
             label="UG Institute"
-            value={student.ug_institute}
+            value={
+              student.ug_institute
+            }
           />
 
           <Detail
             label="UG University"
-            value={student.ug_university}
+            value={
+              student.ug_university
+            }
           />
 
           <Detail
             label="UG Year of Passing"
-            value={student.ug_year_of_passing}
+            value={
+              student.ug_year_of_passing
+            }
           />
 
           <Detail
             label="UG Percentage"
             value={
-              student.ug_percentage !== null
+              student.ug_percentage !==
+              null
                 ? `${student.ug_percentage}%`
                 : null
             }
@@ -812,7 +1812,9 @@ function StudentProfile({
 
           <Detail
             label="Active Backlog"
-            value={student.ug_active_backlog}
+            value={
+              student.ug_active_backlog
+            }
           />
 
         </div>
@@ -823,8 +1825,9 @@ function StudentProfile({
   );
 }
 
+
 // ======================================================
-// DETAIL COMPONENT
+// DETAIL
 // ======================================================
 
 function Detail({
@@ -846,4 +1849,803 @@ function Detail({
   );
 }
 
+
 export default App;
+
+// ======================================================
+// MENTOR MANAGEMENT
+// ======================================================
+
+function MentorManagement({ token }) {
+  const [mentors, setMentors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const [showForm, setShowForm] = useState(false);
+  const [editingMentor, setEditingMentor] = useState(null);
+  const [selectedMentor, setSelectedMentor] = useState(null);
+
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    employee_id: "",
+    department: "",
+    designation: "Mentor",
+    username: "",
+    password: "",
+    status: "Active",
+  });
+
+  const authHeaders = {
+    Authorization: `Bearer ${token}`,
+  };
+
+
+  // ==========================================
+  // FETCH MENTORS
+  // ==========================================
+
+  const fetchMentors = async () => {
+    try {
+      setLoading(true);
+
+      const response = await fetch(
+        `${API}/api/mentors`,
+        {
+          headers: authHeaders,
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Failed to fetch mentors"
+        );
+      }
+
+      setMentors(data.mentors || []);
+
+    } catch (error) {
+      console.error(
+        "Fetch mentors error:",
+        error
+      );
+
+      alert(
+        error.message ||
+        "Failed to load mentors"
+      );
+
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  useEffect(() => {
+    fetchMentors();
+  }, []);
+
+
+  // ==========================================
+  // FORM CHANGE
+  // ==========================================
+
+  const handleChange = (e) => {
+    const {
+      name,
+      value,
+    } = e.target;
+
+    setFormData((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+
+  // ==========================================
+  // OPEN ADD FORM
+  // ==========================================
+
+  const handleAddMentor = () => {
+    setEditingMentor(null);
+
+    setFormData({
+      name: "",
+      email: "",
+      phone: "",
+      employee_id: "",
+      department: "",
+      designation: "Mentor",
+      username: "",
+      password: "",
+      status: "Active",
+    });
+
+    setShowForm(true);
+  };
+
+
+  // ==========================================
+  // OPEN EDIT FORM
+  // ==========================================
+
+  const handleEditMentor = (mentor) => {
+    setEditingMentor(mentor);
+
+    setFormData({
+      name: mentor.name || "",
+      email: mentor.email || "",
+      phone: mentor.phone || "",
+      employee_id:
+        mentor.employee_id || "",
+      department:
+        mentor.department || "",
+      designation:
+        mentor.designation || "Mentor",
+      username:
+        mentor.username || "",
+      password: "",
+      status:
+        mentor.status || "Active",
+    });
+
+    setShowForm(true);
+  };
+
+
+  // ==========================================
+  // CANCEL FORM
+  // ==========================================
+
+  const handleCancel = () => {
+    setShowForm(false);
+    setEditingMentor(null);
+  };
+
+
+  // ==========================================
+  // SAVE / UPDATE MENTOR
+  // ==========================================
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      const url = editingMentor
+        ? `${API}/api/mentors/${editingMentor.id}`
+        : `${API}/api/mentors`;
+
+      const method = editingMentor
+        ? "PUT"
+        : "POST";
+
+      const response = await fetch(
+        url,
+        {
+          method,
+          headers: {
+            ...authHeaders,
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(formData),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(
+          data.message ||
+          "Operation failed"
+        );
+
+        return;
+      }
+
+      alert(
+        editingMentor
+          ? "Mentor updated successfully!"
+          : "Mentor registered successfully!"
+      );
+
+      setShowForm(false);
+      setEditingMentor(null);
+
+      await fetchMentors();
+
+    } catch (error) {
+      console.error(
+        "Save mentor error:",
+        error
+      );
+
+      alert(
+        "Server connection failed"
+      );
+    }
+  };
+
+
+  // ==========================================
+  // DELETE MENTOR
+  // ==========================================
+
+  const handleDeleteMentor = async (
+    mentor
+  ) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${mentor.name}?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API}/api/mentors/${mentor.id}`,
+        {
+          method: "DELETE",
+          headers: authHeaders,
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        alert(
+          data.message ||
+          "Failed to delete mentor"
+        );
+
+        return;
+      }
+
+      alert(
+        "Mentor deleted successfully!"
+      );
+
+      await fetchMentors();
+
+    } catch (error) {
+      console.error(
+        "Delete mentor error:",
+        error
+      );
+
+      alert(
+        "Server connection failed"
+      );
+    }
+  };
+
+
+  // ==========================================
+  // LOADING
+  // ==========================================
+
+  if (loading) {
+    return (
+      <div className="loading-module">
+        Loading mentors...
+      </div>
+    );
+  }
+
+
+  // ==========================================
+  // VIEW MENTOR
+  // ==========================================
+
+  if (selectedMentor) {
+    return (
+      <MentorProfile
+        mentor={selectedMentor}
+        onBack={() =>
+          setSelectedMentor(null)
+        }
+        onEdit={() => {
+          handleEditMentor(
+            selectedMentor
+          );
+
+          setSelectedMentor(null);
+        }}
+      />
+    );
+  }
+
+
+  return (
+    <div className="module-content">
+
+      {/* HEADER */}
+
+      <div className="module-toolbar">
+
+        <div>
+          <h2>
+            Manage Mentors
+          </h2>
+
+          <p>
+            {mentors.length} registered mentors
+          </p>
+        </div>
+
+        <button
+          className="add-button"
+          onClick={handleAddMentor}
+        >
+          + Register New Mentor
+        </button>
+
+      </div>
+
+
+      {/* FORM */}
+
+      {showForm && (
+        <form
+          className="student-form"
+          onSubmit={handleSubmit}
+        >
+
+          <h2>
+            {editingMentor
+              ? "Update Mentor"
+              : "Register New Mentor"}
+          </h2>
+
+
+          <div className="form-grid">
+
+            <div className="form-group">
+              <label>
+                Full Name *
+              </label>
+
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Email *
+              </label>
+
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Phone
+              </label>
+
+              <input
+                type="text"
+                name="phone"
+                value={formData.phone}
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Employee ID *
+              </label>
+
+              <input
+                type="text"
+                name="employee_id"
+                value={
+                  formData.employee_id
+                }
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Department
+              </label>
+
+              <input
+                type="text"
+                name="department"
+                value={
+                  formData.department
+                }
+                onChange={handleChange}
+                placeholder="CSE"
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Designation
+              </label>
+
+              <input
+                type="text"
+                name="designation"
+                value={
+                  formData.designation
+                }
+                onChange={handleChange}
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Username *
+              </label>
+
+              <input
+                type="text"
+                name="username"
+                value={
+                  formData.username
+                }
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+
+            <div className="form-group">
+              <label>
+                Password
+                {editingMentor
+                  ? " (leave blank to keep current)"
+                  : " *"}
+              </label>
+
+              <input
+                type="password"
+                name="password"
+                value={
+                  formData.password
+                }
+                onChange={handleChange}
+                required={!editingMentor}
+              />
+            </div>
+
+
+            {editingMentor && (
+              <div className="form-group">
+
+                <label>
+                  Status
+                </label>
+
+                <select
+                  name="status"
+                  value={
+                    formData.status
+                  }
+                  onChange={handleChange}
+                >
+                  <option value="Active">
+                    Active
+                  </option>
+
+                  <option value="Inactive">
+                    Inactive
+                  </option>
+                </select>
+
+              </div>
+            )}
+
+          </div>
+
+
+          <div className="form-actions">
+
+            <button
+              type="submit"
+              className="save-button"
+            >
+              {editingMentor
+                ? "Update Mentor"
+                : "Register Mentor"}
+            </button>
+
+            <button
+              type="button"
+              className="cancel-button"
+              onClick={handleCancel}
+            >
+              Cancel
+            </button>
+
+          </div>
+
+        </form>
+      )}
+
+
+      {/* MENTOR TABLE */}
+
+      <div className="table-container">
+
+        <table>
+
+          <thead>
+
+            <tr>
+              <th>ID</th>
+              <th>Mentor</th>
+              <th>Employee ID</th>
+              <th>Email</th>
+              <th>Department</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+
+            {mentors.length === 0 ? (
+
+              <tr>
+
+                <td
+                  colSpan="7"
+                  className="empty-table"
+                >
+                  No mentors registered
+                </td>
+
+              </tr>
+
+            ) : (
+
+              mentors.map((mentor) => (
+
+                <tr key={mentor.id}>
+
+                  <td>
+                    {mentor.id}
+                  </td>
+
+                  <td>
+                    <strong>
+                      {mentor.name}
+                    </strong>
+                  </td>
+
+                  <td>
+                    {mentor.employee_id}
+                  </td>
+
+                  <td>
+                    {mentor.email}
+                  </td>
+
+                  <td>
+                    {mentor.department ||
+                      "—"}
+                  </td>
+
+                  <td>
+
+                    <span
+                      className={
+                        mentor.status ===
+                        "Active"
+                          ? "status-active"
+                          : "status-inactive"
+                      }
+                    >
+                      {mentor.status}
+                    </span>
+
+                  </td>
+
+                  <td>
+
+                    <div className="action-buttons">
+
+                      <button
+                        className="view-button"
+                        onClick={() =>
+                          setSelectedMentor(
+                            mentor
+                          )
+                        }
+                      >
+                        View
+                      </button>
+
+                      <button
+                        className="edit-button"
+                        onClick={() =>
+                          handleEditMentor(
+                            mentor
+                          )
+                        }
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        className="delete-button"
+                        onClick={() =>
+                          handleDeleteMentor(
+                            mentor
+                          )
+                        }
+                      >
+                        Delete
+                      </button>
+
+                    </div>
+
+                  </td>
+
+                </tr>
+
+              ))
+
+            )}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+// ======================================================
+// MENTOR PROFILE
+// ======================================================
+
+function MentorProfile({
+  mentor,
+  onBack,
+  onEdit,
+}) {
+  return (
+    <div className="profile">
+
+      <button
+        className="back-button"
+        onClick={onBack}
+      >
+        ← Back to Mentors
+      </button>
+
+
+      <div className="profile-header">
+
+        <div className="avatar">
+          {mentor.name
+            ?.charAt(0)
+            ?.toUpperCase()}
+        </div>
+
+        <div>
+
+          <h2>
+            {mentor.name}
+          </h2>
+
+          <p>
+            Employee ID:{" "}
+            {mentor.employee_id}
+          </p>
+
+        </div>
+
+      </div>
+
+
+      <section className="profile-section">
+
+        <h3>
+          Mentor Information
+        </h3>
+
+        <div className="details-grid">
+
+          <Detail
+            label="Full Name"
+            value={mentor.name}
+          />
+
+          <Detail
+            label="Email"
+            value={mentor.email}
+          />
+
+          <Detail
+            label="Phone"
+            value={mentor.phone}
+          />
+
+          <Detail
+            label="Employee ID"
+            value={
+              mentor.employee_id
+            }
+          />
+
+          <Detail
+            label="Department"
+            value={
+              mentor.department
+            }
+          />
+
+          <Detail
+            label="Designation"
+            value={
+              mentor.designation
+            }
+          />
+
+          <Detail
+            label="Username"
+            value={
+              mentor.username
+            }
+          />
+
+          <Detail
+            label="Status"
+            value={
+              mentor.status
+            }
+          />
+
+        </div>
+
+      </section>
+
+
+      <div className="form-actions">
+
+        <button
+          className="edit-button profile-edit-button"
+          onClick={onEdit}
+        >
+          Edit Mentor
+        </button>
+
+      </div>
+
+    </div>
+  );
+}
