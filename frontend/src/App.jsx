@@ -105,7 +105,7 @@ function App() {
 
   if (user.role === "MENTOR") {
     return (
-      <RoleDashboard
+      <MentorDashboard
         title="Mentor Dashboard"
         subtitle="Mentor Management"
         user={user}
@@ -116,7 +116,7 @@ function App() {
 
   if (user.role === "STUDENT") {
     return (
-      <RoleDashboard
+      <StudentDashboard
         title="Student Dashboard"
         subtitle="Student Portal"
         user={user}
@@ -681,60 +681,300 @@ function StatCard({
 // ROLE PLACEHOLDER
 // ======================================================
 
-function RoleDashboard({
+// ======================================================
+// MENTOR DASHBOARD
+// ======================================================
+
+function MentorDashboard({
   title,
   subtitle,
   user,
   onLogout,
 }) {
+  const [activeModule, setActiveModule] =
+    useState("dashboard");
+
+  const mentorModules = [
+    {
+      id: "dashboard",
+      icon: "⌂",
+      name: "Dashboard",
+    },
+    {
+      id: "students",
+      icon: "🎓",
+      name: "My Students",
+    },
+    {
+      id: "attendance",
+      icon: "✓",
+      name: "Attendance",
+    },
+    {
+      id: "cia",
+      icon: "📊",
+      name: "CIA / Marks",
+    },
+    {
+      id: "counselling",
+      icon: "🧠",
+      name: "Counselling",
+    },
+    {
+      id: "parent",
+      icon: "👨‍👩‍👧",
+      name: "Parent Interactions",
+    },
+    {
+      id: "tracking",
+      icon: "📈",
+      name: "Learner Tracking",
+    },
+    {
+      id: "achievements",
+      icon: "🏆",
+      name: "Achievements",
+    },
+    {
+      id: "action-plan",
+      icon: "📅",
+      name: "Monthly Action Plan",
+    },
+  ];
+
+  const renderModule = () => {
+    switch (activeModule) {
+
+      case "students":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              🎓
+            </div>
+
+            <h2>
+              My Students
+            </h2>
+
+            <p>
+              Assigned Students Profile Directory
+            </p>
+          </div>
+        );
+
+      case "attendance":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              ✓
+            </div>
+
+            <h2>
+              Attendance
+            </h2>
+
+            <p>
+              Attendance Tracker
+            </p>
+          </div>
+        );
+
+      case "cia":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              📊
+            </div>
+
+            <h2>
+              CIA / Marks
+            </h2>
+
+            <p>
+              Continuous Internal Assessment
+            </p>
+          </div>
+        );
+
+      case "counselling":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              🧠
+            </div>
+
+            <h2>
+              Counselling
+            </h2>
+
+            <p>
+              Counselling Register
+            </p>
+          </div>
+        );
+
+      case "parent":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              👨‍👩‍👧
+            </div>
+
+            <h2>
+              Parent Interactions
+            </h2>
+
+            <p>
+              Parent Meeting and Communication History
+            </p>
+          </div>
+        );
+
+      case "tracking":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              📈
+            </div>
+
+            <h2>
+              Learner Tracking
+            </h2>
+
+            <p>
+              Categorize and track student progress
+            </p>
+          </div>
+        );
+
+      case "achievements":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              🏆
+            </div>
+
+            <h2>
+              Student Achievements
+            </h2>
+
+            <p>
+              Achievement Log and Registry
+            </p>
+          </div>
+        );
+
+      case "action-plan":
+        return (
+          <div className="coming-card">
+            <div className="coming-icon">
+              📅
+            </div>
+
+            <h2>
+              Monthly Action Plan
+            </h2>
+
+            <p>
+              Create and manage monthly student actions
+            </p>
+          </div>
+        );
+
+      default:
+        return (
+          <MentorHome
+            user={user}
+          />
+        );
+    }
+  };
+
   return (
     <div className="dashboard-layout">
+
+      {/* ==================================================
+          SIDEBAR
+      ================================================== */}
 
       <aside className="sidebar">
 
         <div className="sidebar-logo">
+
           <div className="sidebar-logo-icon">
             MMS
           </div>
 
           <div>
-            <h2>Mentor System</h2>
+            <h2>
+              Mentor System
+            </h2>
+
             <span>
-              {subtitle}
+              Mentor Portal
             </span>
           </div>
+
         </div>
+
 
         <nav className="sidebar-nav">
 
-          <button className="nav-item active">
-            <span>⌂</span>
-            Dashboard
-          </button>
+          {mentorModules.map((module) => (
+
+            <button
+              key={module.id}
+              className={
+                activeModule === module.id
+                  ? "nav-item active"
+                  : "nav-item"
+              }
+              onClick={() =>
+                setActiveModule(module.id)
+              }
+            >
+
+              <span>
+                {module.icon}
+              </span>
+
+              {module.name}
+
+            </button>
+
+          ))}
 
         </nav>
+
+
+        {/* SIDEBAR BOTTOM */}
 
         <div className="sidebar-bottom">
 
           <div className="sidebar-user">
 
             <div className="user-avatar">
+
               {user.fullName
                 ?.charAt(0)
                 ?.toUpperCase()}
+
             </div>
 
             <div>
+
               <strong>
                 {user.fullName}
               </strong>
 
               <span>
-                {user.role}
+                MENTOR
               </span>
+
             </div>
 
           </div>
+
 
           <button
             className="logout-button"
@@ -747,46 +987,165 @@ function RoleDashboard({
 
       </aside>
 
+
+      {/* ==================================================
+          MAIN CONTENT
+      ================================================== */}
+
       <main className="dashboard-main">
 
         <header className="dashboard-header">
 
           <div>
-            <h1>{title}</h1>
+
+            <h1>
+              {title}
+            </h1>
 
             <p>
               Welcome, {user.fullName}
             </p>
+
           </div>
 
+
           <div className="header-role">
-            {user.role}
+            MENTOR
           </div>
 
         </header>
 
+
         <div className="dashboard-content">
 
-          <div className="coming-card">
-
-            <div className="coming-icon">
-              🚧
-            </div>
-
-            <h2>
-              {title}
-            </h2>
-
-            <p>
-              This dashboard will be
-              developed in the next phase.
-            </p>
-
-          </div>
+          {renderModule()}
 
         </div>
 
       </main>
+
+    </div>
+  );
+}
+
+
+// ======================================================
+// MENTOR HOME
+// ======================================================
+
+function MentorHome({ user }) {
+
+  return (
+    <div className="module-content">
+
+      <div className="module-toolbar">
+
+        <div>
+
+          <h2>
+            Mentor Dashboard
+          </h2>
+
+          <p>
+            Welcome back, {user.fullName}
+          </p>
+
+        </div>
+
+      </div>
+
+
+      <div className="stat-grid">
+
+        <StatCard
+          title="My Students"
+          value="0"
+          icon="🎓"
+        />
+
+        <StatCard
+          title="Attendance"
+          value="0%"
+          icon="✓"
+        />
+
+        <StatCard
+          title="Pending Tasks"
+          value="0"
+          icon="📋"
+        />
+
+        <StatCard
+          title="Achievements"
+          value="0"
+          icon="🏆"
+        />
+
+      </div>
+
+
+      <div className="dashboard-section">
+
+        <h2>
+          Mentor Responsibilities
+        </h2>
+
+        <div className="responsibility-grid">
+
+          <div className="responsibility-card">
+            <span>🎓</span>
+
+            <h3>
+              My Students
+            </h3>
+
+            <p>
+              View and monitor assigned students.
+            </p>
+          </div>
+
+
+          <div className="responsibility-card">
+            <span>✓</span>
+
+            <h3>
+              Attendance
+            </h3>
+
+            <p>
+              Manage student attendance records.
+            </p>
+          </div>
+
+
+          <div className="responsibility-card">
+            <span>📊</span>
+
+            <h3>
+              CIA / Marks
+            </h3>
+
+            <p>
+              Monitor student academic performance.
+            </p>
+          </div>
+
+
+          <div className="responsibility-card">
+            <span>🧠</span>
+
+            <h3>
+              Counselling
+            </h3>
+
+            <p>
+              Maintain student counselling records.
+            </p>
+          </div>
+
+        </div>
+
+      </div>
 
     </div>
   );
