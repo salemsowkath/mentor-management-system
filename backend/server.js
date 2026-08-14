@@ -498,3 +498,279 @@ app.delete('/api/mentors/:id', requireAuth, allowRoles('HOD'), async (req, res) 
     });
   }
 });
+
+// ======================================================
+// MENTOR - STUDENT ASSIGNMENT
+// HOD ONLY
+// ======================================================
+
+// Get active mentors
+app.get(
+  '/api/mentor-assignments/mentors',
+  requireAuth,
+  allowRoles('HOD'),
+  async (req, res) => {
+    try {
+      const [rows] = await db.query(`
+        SELECT
+          id,
+          name,
+          employee_id,
+          username,
+          department,
+          designation
+        FROM mentors
+        WHERE status = 'Active'
+        ORDER BY name
+      `);
+
+      res.json({
+        success: true,
+        mentors: rows
+      });
+
+    } catch (error) {
+      console.error('Fetch mentors error:', error);
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch mentors'
+      });
+    }
+  }
+);
+
+
+// Get all students with their assignment status
+app.get(
+  '/api/mentor-assignments/students',
+  requireAuth,
+  allowRoles('HOD'),
+  async (req, res) => {
+    try {
+      const [rows] = await db.query(`
+        SELECT
+          s.student_id,
+          s.name,
+          s.email,
+          s.mobile,
+
+          ms.assignment_id,
+          ms.mentor_id,
+
+          m.name AS mentor_name
+
+        FROM students s
+
+        LEFT JOIN mentor_students ms
+          ON s.student_id = ms.student_id
+
+        LEFT JOIN mentors m
+          ON ms.mentor_id = m.id
+
+        ORDER BY s.student_id
+      `);
+
+      res.json({
+        success: true,
+        students: rows
+      });
+
+    } catch (error) {
+      console.error('Fetch students assignment error:', error);
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch students'
+      });
+    }
+  }
+);
+
+
+// Assign students to a mentor
+app.post(
+  '/api/mentor-assignments',
+  requireAuth,
+  allowRoles('HOD'),
+  async (req, res) => {
+    try {
+      const {
+        mentor_id,
+        student_ids
+      } = req.body;
+
+      if (!mentor_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mentor is required'
+        });
+      }
+
+      if (
+        !Array.isArray(student_ids) ||
+        student_ids.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one student is required'
+        });
+      }
+
+
+      // Check mentor
+      const [mentorRows] = await db.query(
+        `
+        SELECT id
+        FROM mentors
+        WHERE id = ?
+        AND status = 'Active'
+        `,
+        [mentor_id]
+      );
+
+      if (mentorRows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Active mentor not found'
+        });
+      }
+
+
+      // Check whether students already have a mentor
+      const placeholders =
+        student_ids.map(() => '?').join(',');
+
+      const [existingAssignments] =
+        await db.query(
+          `
+          SELECT
+            ms.student_id,
+            s.name,
+            m.name AS mentor_name
+
+          FROM mentor_students ms
+
+          JOIN students s
+            ON ms.student_id = s.student_id
+
+          JOIN mentors m
+            ON ms.mentor_id = m.id
+
+          WHERE ms.student_id IN (${placeholders})
+          `,
+          student_ids
+        );
+
+
+      if (existingAssignments.length > 0) {
+
+        const names =
+          existingAssignments
+            .map(
+              student =>
+                `${student.name} → ${student.mentor_name}`
+            )
+            .join(', ');
+
+        return res.status(409).json({
+          success: false,
+          message:
+            `Some students are already assigned: ${names}`
+        });
+      }
+
+
+      // Insert assignments
+      const values = student_ids.map(
+        student_id => [
+          mentor_id,
+          student_id
+        ]
+      );
+
+      await db.query(
+        `
+        INSERT INTO mentor_students
+        (
+          mentor_id,
+          student_id
+        )
+        VALUES ?
+        `,
+        [values]
+      );
+
+
+      res.status(201).json({
+        success: true,
+        message:
+          `${student_ids.length} student(s) assigned successfully`
+      });
+
+    } catch (error) {
+      console.error(
+        'Assign students error:',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to assign students'
+      });
+    }
+  }
+);
+
+
+// Remove student from mentor
+app.delete(
+  '/api/mentor-assignments/:assignmentId',
+  requireAuth,
+  allowRoles('HOD'),
+  async (req, res) => {
+    try {
+
+      const {
+        assignmentId
+      } = req.params;
+
+      const [result] =
+        await db.query(
+          `
+          DELETE FROM mentor_students
+          WHERE assignment_id = ?
+          `,
+          [assignmentId]
+        );
+
+
+      if (!result.affectedRows) {
+        return res.status(404).json({
+          success: false,
+          message: 'Assignment not found'
+        });
+      }
+
+
+      res.json({
+        success: true,
+        message:
+          'Student removed from mentor successfully'
+      });
+
+    } catch (error) {
+
+      console.error(
+        'Remove assignment error:',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message:
+          'Failed to remove student assignment'
+      });
+    }
+  }
+);

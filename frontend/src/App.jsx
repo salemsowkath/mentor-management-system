@@ -27,9 +27,11 @@ const emptyForm = {
 
 function App() {
   const [user, setUser] = useState(null);
+
   const [token, setToken] = useState(
     localStorage.getItem("mentor_token")
   );
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,7 +66,11 @@ function App() {
   }, [token]);
 
   const handleLoginSuccess = (loginData) => {
-    localStorage.setItem("mentor_token", loginData.token);
+    localStorage.setItem(
+      "mentor_token",
+      loginData.token
+    );
+
     setToken(loginData.token);
     setUser(loginData.user);
   };
@@ -109,6 +115,7 @@ function App() {
         title="Mentor Dashboard"
         subtitle="Mentor Management"
         user={user}
+        token={token}
         onLogout={handleLogout}
       />
     );
@@ -120,6 +127,7 @@ function App() {
         title="Student Dashboard"
         subtitle="Student Portal"
         user={user}
+        token={token}
         onLogout={handleLogout}
       />
     );
@@ -133,6 +141,7 @@ function App() {
     </div>
   );
 }
+
 
 
 // ======================================================
@@ -165,6 +174,13 @@ function Login({ onLoginSuccess }) {
           }),
         }
       );
+
+      if (!response.ok) {
+  setError(
+    data.message || "Invalid username or password"
+  );
+  return;
+}
 
       const data = await response.json();
 
@@ -453,10 +469,8 @@ function HODDashboard({
           />
         )}
 
-        {activeModule === "mentors" && (
-          <MentorManagement
-            token={token}
-          />
+        {activeModule === "mentor-assignments" && (
+          <MentorStudentAssignments token={token} />
         )}
 
         {activeModule === "students" && (
@@ -747,19 +761,9 @@ function MentorDashboard({
 
       case "students":
         return (
-          <div className="coming-card">
-            <div className="coming-icon">
-              🎓
-            </div>
-
-            <h2>
-              My Students
-            </h2>
-
-            <p>
-              Assigned Students Profile Directory
-            </p>
-          </div>
+          <MentorAssignedStudents
+             token={token}
+          />
         );
 
       case "attendance":
@@ -1100,7 +1104,12 @@ function MentorHome({ user }) {
             </h3>
 
             <p>
-              View and monitor assigned students.
+              <button
+                className="primary-button"
+                onClick={() => setActiveModule("mentor-assignments")}
+              >
+                👥 Assign Students
+              </button>
             </p>
           </div>
 
@@ -2211,6 +2220,233 @@ function Detail({
 
 export default App;
 
+function MentorStudentAssignments({ token }) {
+  const [mentors, setMentors] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [selectedMentor, setSelectedMentor] = useState("");
+  const [selectedStudents, setSelectedStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadAssignmentData();
+  }, []);
+
+  const loadAssignmentData = async () => {
+    try {
+      const [mentorResponse, studentResponse] =
+        await Promise.all([
+          fetch(`${API}/api/mentor-assignments/mentors`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+
+          fetch(`${API}/api/mentor-assignments/students`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+        ]);
+
+      const mentorData = await mentorResponse.json();
+      const studentData = await studentResponse.json();
+
+      if (!mentorResponse.ok) {
+        throw new Error(
+          mentorData.message || "Failed to load mentors"
+        );
+      }
+
+      if (!studentResponse.ok) {
+        throw new Error(
+          studentData.message || "Failed to load students"
+        );
+      }
+
+      setMentors(mentorData.mentors || []);
+      setStudents(studentData.students || []);
+
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleStudent = (studentId) => {
+    setSelectedStudents((current) =>
+      current.includes(studentId)
+        ? current.filter((id) => id !== studentId)
+        : [...current, studentId]
+    );
+  };
+
+  const assignStudents = async () => {
+    if (!selectedMentor) {
+      alert("Please select a mentor");
+      return;
+    }
+
+    if (selectedStudents.length === 0) {
+      alert("Please select at least one student");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API}/api/mentor-assignments`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+            mentor_id: Number(selectedMentor),
+            student_ids: selectedStudents,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Assignment failed"
+        );
+      }
+
+      alert(data.message);
+
+      setSelectedStudents([]);
+
+      await loadAssignmentData();
+
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-module">
+        Loading mentor assignments...
+      </div>
+    );
+  }
+
+  return (
+    <div className="module-content">
+
+      <div className="module-toolbar">
+        <div>
+          <h2>
+            Assign Students to Mentor
+          </h2>
+
+          <p>
+            HOD can assign students to active mentors.
+          </p>
+        </div>
+      </div>
+
+
+      <div className="assignment-card">
+
+        <label>
+          Select Mentor
+        </label>
+
+        <select
+          value={selectedMentor}
+          onChange={(e) =>
+            setSelectedMentor(e.target.value)
+          }
+        >
+          <option value="">
+            -- Select Mentor --
+          </option>
+
+          {mentors.map((mentor) => (
+            <option
+              key={mentor.id}
+              value={mentor.id}
+            >
+              {mentor.name} ({mentor.employee_id})
+            </option>
+          ))}
+        </select>
+
+
+        <h3>
+          Select Students
+        </h3>
+
+
+        <div className="student-selection-list">
+
+          {students.map((student) => (
+
+            <label
+              key={student.student_id}
+              className="student-selection-item"
+            >
+
+              <input
+                type="checkbox"
+                checked={selectedStudents.includes(
+                  student.student_id
+                )}
+                disabled={Boolean(
+                  student.assignment_id
+                )}
+                onChange={() =>
+                  toggleStudent(
+                    student.student_id
+                  )
+                }
+              />
+
+              <span>
+                <strong>
+                  {student.name}
+                </strong>
+
+                <small>
+                  {student.email}
+                </small>
+              </span>
+
+              {student.assignment_id && (
+                <em>
+                  Assigned to {student.mentor_name}
+                </em>
+              )}
+
+            </label>
+
+          ))}
+
+        </div>
+
+
+        <button
+          className="primary-button"
+          onClick={assignStudents}
+        >
+          Assign Selected Students
+        </button>
+
+      </div>
+
+    </div>
+  );
+}
+
 // ======================================================
 // MENTOR MANAGEMENT
 // ======================================================
@@ -2248,6 +2484,10 @@ function MentorManagement({ token }) {
     try {
       setLoading(true);
 
+      if (!token) {
+        throw new Error("Authentication token missing");
+      }
+
       const response = await fetch(
         `${API}/api/mentors`,
         {
@@ -2283,9 +2523,295 @@ function MentorManagement({ token }) {
 
 
   useEffect(() => {
-    fetchMentors();
-  }, []);
+    if (token) {
+      fetchMentors();
+    }
+  }, [token]);
 
+
+// ======================================================
+// MENTOR — ASSIGNED STUDENTS
+// ======================================================
+
+function MentorAssignedStudents({ token }) {
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+
+  const fetchAssignedStudents = async () => {
+    try {
+      setLoading(true);
+
+      if (!token) {
+        throw new Error("Authentication token missing");
+      }
+
+      const response = await fetch(
+        `${API}/api/mentor/my-students`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Failed to load assigned students"
+        );
+      }
+
+      setStudents(data.students || []);
+
+    } catch (error) {
+      console.error(
+        "Fetch assigned students error:",
+        error
+      );
+
+      alert(error.message);
+
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchAssignedStudents();
+    }
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="loading-module">
+        Loading assigned students...
+      </div>
+    );
+  }
+
+  if (selectedStudent) {
+    return (
+      <div className="module-content">
+
+        <button
+          className="back-button"
+          onClick={() =>
+            setSelectedStudent(null)
+          }
+        >
+          ← Back to My Students
+        </button>
+
+        <div className="profile">
+
+          <div className="profile-header">
+
+            <div className="avatar">
+              {selectedStudent.name
+                ?.charAt(0)
+                ?.toUpperCase()}
+            </div>
+
+            <div>
+              <h2>
+                {selectedStudent.name}
+              </h2>
+
+              <p>
+                Student ID:{" "}
+                {selectedStudent.student_id}
+              </p>
+            </div>
+
+          </div>
+
+          <section className="profile-section">
+
+            <h3>
+              Student Information
+            </h3>
+
+            <div className="details-grid">
+
+              <Detail
+                label="Name"
+                value={selectedStudent.name}
+              />
+
+              <Detail
+                label="Email"
+                value={selectedStudent.email}
+              />
+
+              <Detail
+                label="Mobile"
+                value={selectedStudent.mobile}
+              />
+
+              <Detail
+                label="Gender"
+                value={selectedStudent.gender}
+              />
+
+              <Detail
+                label="Department"
+                value={selectedStudent.ug_department}
+              />
+
+              <Detail
+                label="UG Degree"
+                value={selectedStudent.ug_degree}
+              />
+
+              <Detail
+                label="UG Percentage"
+                value={
+                  selectedStudent.ug_percentage !== null
+                    ? `${selectedStudent.ug_percentage}%`
+                    : null
+                }
+              />
+
+              <Detail
+                label="Active Backlog"
+                value={selectedStudent.ug_active_backlog}
+              />
+
+            </div>
+
+          </section>
+
+        </div>
+
+      </div>
+    );
+  }
+
+  return (
+    <div className="module-content">
+
+      <div className="module-toolbar">
+
+        <div>
+          <h2>
+            My Students
+          </h2>
+
+          <p>
+            {students.length} assigned students
+          </p>
+        </div>
+
+        <button
+          className="primary-button"
+          onClick={fetchAssignedStudents}
+        >
+          ↻ Refresh
+        </button>
+
+      </div>
+
+      {students.length === 0 ? (
+
+        <div className="coming-card">
+
+          <div className="coming-icon">
+            🎓
+          </div>
+
+          <h2>
+            No Students Assigned
+          </h2>
+
+          <p>
+            The HOD has not assigned any students
+            to you yet.
+          </p>
+
+        </div>
+
+      ) : (
+
+        <div className="table-container">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>ID</th>
+                <th>Student</th>
+                <th>Email</th>
+                <th>Mobile</th>
+                <th>Department</th>
+                <th>Action</th>
+              </tr>
+
+            </thead>
+
+            <tbody>
+
+              {students.map((student) => (
+
+                <tr
+                  key={student.student_id}
+                >
+
+                  <td>
+                    {student.student_id}
+                  </td>
+
+                  <td>
+                    <strong>
+                      {student.name}
+                    </strong>
+                  </td>
+
+                  <td>
+                    {student.email || "—"}
+                  </td>
+
+                  <td>
+                    {student.mobile || "—"}
+                  </td>
+
+                  <td>
+                    {student.ug_department || "—"}
+                  </td>
+
+                  <td>
+
+                    <button
+                      className="view-button"
+                      onClick={() =>
+                        setSelectedStudent(
+                          student
+                        )
+                      }
+                    >
+                      View
+                    </button>
+
+                  </td>
+
+                </tr>
+
+              ))}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      )}
+
+    </div>
+  );
+}
 
   // ==========================================
   // FORM CHANGE
