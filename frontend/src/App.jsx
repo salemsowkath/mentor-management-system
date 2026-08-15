@@ -140,15 +140,7 @@ function App() {
       </div>
     </div>
   );
-}
-
-
-
-// ======================================================
-// LOGIN
-// ======================================================
-
-function Login({ onLoginSuccess }) {
+}function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -279,14 +271,7 @@ function Login({ onLoginSuccess }) {
 
     </div>
   );
-}
-
-
-// ======================================================
-// HOD DASHBOARD
-// ======================================================
-
-function HODDashboard({
+}function HODDashboard({
   user,
   token,
   onLogout,
@@ -464,33 +449,26 @@ function HODDashboard({
 
 
         {activeModule === "dashboard" && (
-          <HODHome
-            token={token}
-          />
+          <HODHome token={token} />
+        )}
+
+        {activeModule === "mentors" && (
+          <MentorManagement token={token} />
         )}
 
         {activeModule === "mentor-assignments" && (
           <MentorStudentAssignments token={token} />
-        )}
+       )}
 
         {activeModule === "students" && (
-          <StudentManagement
-            token={token}
-          />
-        )}
+          <StudentManagement token={token} />
+       )}
 
       </main>
 
     </div>
   );
-}
-
-
-// ======================================================
-// HOD HOME
-// ======================================================
-
-function HODHome({ token }) {
+}function HODHome({ token }) {
   const [studentCount, setStudentCount] =
     useState(0);
 
@@ -657,14 +635,7 @@ function HODHome({ token }) {
 
     </div>
   );
-}
-
-
-// ======================================================
-// STAT CARD
-// ======================================================
-
-function StatCard({
+}function StatCard({
   title,
   value,
   icon,
@@ -688,21 +659,11 @@ function StatCard({
 
     </div>
   );
-}
-
-
-// ======================================================
-// ROLE PLACEHOLDER
-// ======================================================
-
-// ======================================================
-// MENTOR DASHBOARD
-// ======================================================
-
-function MentorDashboard({
+}function MentorDashboard({
   title,
   subtitle,
   user,
+  token,
   onLogout,
 }) {
   const [activeModule, setActiveModule] =
@@ -889,6 +850,7 @@ function MentorDashboard({
         return (
           <MentorHome
             user={user}
+            onNavigate={setActiveModule}
           />
         );
     }
@@ -1030,14 +992,7 @@ function MentorDashboard({
 
     </div>
   );
-}
-
-
-// ======================================================
-// MENTOR HOME
-// ======================================================
-
-function MentorHome({ user }) {
+}function MentorHome({ user, onNavigate }) {
 
   return (
     <div className="module-content">
@@ -1106,9 +1061,9 @@ function MentorHome({ user }) {
             <p>
               <button
                 className="primary-button"
-                onClick={() => setActiveModule("mentor-assignments")}
+                onClick={() => onNavigate("students")}
               >
-                👥 Assign Students
+                👥 View My Students
               </button>
             </p>
           </div>
@@ -1158,14 +1113,7 @@ function MentorHome({ user }) {
 
     </div>
   );
-}
-
-
-// ======================================================
-// STUDENT MANAGEMENT
-// ======================================================
-
-function StudentManagement({ token }) {
+}function StudentManagement({ token }) {
 
   const [students, setStudents] =
     useState([]);
@@ -1991,14 +1939,7 @@ function StudentManagement({ token }) {
 
     </div>
   );
-}
-
-
-// ======================================================
-// STUDENT PROFILE
-// ======================================================
-
-function StudentProfile({
+}function StudentProfile({
   student,
   onBack,
 }) {
@@ -2191,14 +2132,7 @@ function StudentProfile({
 
     </div>
   );
-}
-
-
-// ======================================================
-// DETAIL
-// ======================================================
-
-function Detail({
+}function Detail({
   label,
   value,
 }) {
@@ -2217,8 +2151,9 @@ function Detail({
   );
 }
 
-
-export default App;
+// ======================================================
+// HOD — MENTOR ASSIGNMENT
+// ======================================================
 
 function MentorStudentAssignments({ token }) {
   const [mentors, setMentors] = useState([]);
@@ -2446,88 +2381,6 @@ function MentorStudentAssignments({ token }) {
     </div>
   );
 }
-
-// ======================================================
-// MENTOR MANAGEMENT
-// ======================================================
-
-function MentorManagement({ token }) {
-  const [mentors, setMentors] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const [showForm, setShowForm] = useState(false);
-  const [editingMentor, setEditingMentor] = useState(null);
-  const [selectedMentor, setSelectedMentor] = useState(null);
-
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    employee_id: "",
-    department: "",
-    designation: "Mentor",
-    username: "",
-    password: "",
-    status: "Active",
-  });
-
-  const authHeaders = {
-    Authorization: `Bearer ${token}`,
-  };
-
-
-  // ==========================================
-  // FETCH MENTORS
-  // ==========================================
-
-  const fetchMentors = async () => {
-    try {
-      setLoading(true);
-
-      if (!token) {
-        throw new Error("Authentication token missing");
-      }
-
-      const response = await fetch(
-        `${API}/api/mentors`,
-        {
-          headers: authHeaders,
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Failed to fetch mentors"
-        );
-      }
-
-      setMentors(data.mentors || []);
-
-    } catch (error) {
-      console.error(
-        "Fetch mentors error:",
-        error
-      );
-
-      alert(
-        error.message ||
-        "Failed to load mentors"
-      );
-
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  useEffect(() => {
-    if (token) {
-      fetchMentors();
-    }
-  }, [token]);
-
 
 // ======================================================
 // MENTOR — ASSIGNED STUDENTS
@@ -2812,6 +2665,94 @@ function MentorAssignedStudents({ token }) {
     </div>
   );
 }
+
+// ======================================================
+// HOD — MENTOR MANAGEMENT
+// ======================================================
+
+function MentorManagement({ token }) {
+  const [mentors, setMentors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const [showForm, setShowForm] = useState(false);
+  const [editingMentor, setEditingMentor] = useState(null);
+  const [selectedMentor, setSelectedMentor] = useState(null);
+
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    employee_id: "",
+    department: "",
+    designation: "Mentor",
+    username: "",
+    password: "",
+    status: "Active",
+  });
+
+  const authHeaders = {
+    Authorization: `Bearer ${token}`,
+  };
+
+
+  // ==========================================
+  // FETCH MENTORS
+  // ==========================================
+
+  const fetchMentors = async () => {
+    try {
+      setLoading(true);
+
+      if (!token) {
+        throw new Error("Authentication token missing");
+      }
+
+      const response = await fetch(
+        `${API}/api/mentors`,
+        {
+          headers: authHeaders,
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Failed to fetch mentors"
+        );
+      }
+
+      setMentors(data.mentors || []);
+
+    } catch (error) {
+      console.error(
+        "Fetch mentors error:",
+        error
+      );
+
+      alert(
+        error.message ||
+        "Failed to load mentors"
+      );
+
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  useEffect(() => {
+    if (token) {
+      fetchMentors();
+    }
+  }, [token]);
+
+
+// ======================================================
+// MENTOR — ASSIGNED STUDENTS
+// ======================================================
+
+
 
   // ==========================================
   // FORM CHANGE
@@ -3412,7 +3353,6 @@ function MentorAssignedStudents({ token }) {
   );
 }
 
-
 // ======================================================
 // MENTOR PROFILE
 // ======================================================
@@ -3534,3 +3474,5 @@ function MentorProfile({
     </div>
   );
 }
+
+export default App;
